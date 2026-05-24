@@ -1,0 +1,10 @@
+.idea/
+__pycache__/
+
+models/
+outputs_instruction_finetune/
+outputs_pretrain/
+outputs_qwen_lora_finetune/
+
+*.pyc
+*.log
