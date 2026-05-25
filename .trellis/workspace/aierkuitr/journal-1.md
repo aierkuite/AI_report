@@ -19,13 +19,52 @@
 
 ### Main Changes
 
-(Add details)
+- Replaced the scaffolded backend/frontend spec split with a single `.trellis/spec/python/` layer that matches the actual Python ML script repository.
+- Documented script layout, file-based persistence, CLI validation, dependency handling, console output, and quality checks with references to the existing Python scripts.
+- Kept shared Trellis thinking guides under `.trellis/spec/guides/`.
+- Archived `00-bootstrap-guidelines` after the spec work commit.
 
 ### Git Commits
 
 | Hash | Message |
 |------|---------|
 | `4ff82d4` | (see git log) |
+
+### Testing
+
+- [OK] `get_context.py --mode packages` reports only `Spec layers: python`
+- [OK] Template filler search returned no remaining scaffold markers in `.trellis/spec/`
+- [OK] `task.py validate .trellis/tasks/00-bootstrap-guidelines` passed before archive
+- [OK] `git diff --check` passed for the Trellis spec and task changes
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 2: Bootstrap Python Trellis Guidelines
+
+**Date**: 2026-05-25
+**Task**: Bootstrap Python Trellis Guidelines
+**Branch**: `main`
+
+### Summary
+
+Filled Trellis specs for the Python ML script repository, replaced the scaffolded fullstack layers with a python layer, and archived 00-bootstrap-guidelines.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a2d05fb` | (see git log) |
 
 ### Testing
 
