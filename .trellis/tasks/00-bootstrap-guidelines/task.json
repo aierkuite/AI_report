@@ -21,8 +21,7 @@
   "children": [],
   "parent": null,
   "relatedFiles": [
-    ".trellis/spec/backend/",
-    ".trellis/spec/frontend/"
+    ".trellis/spec/python/"
   ],
   "notes": "First-time setup task created by trellis init (fullstack project)",
   "meta": {}
