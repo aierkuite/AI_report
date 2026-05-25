@@ -171,6 +171,7 @@ class FinetuneConfig:
         device: 运行设备，auto 表示自动选择 cuda 或 cpu
         local_files_only: 只从本地缓存或本地目录加载模型
         force_download: 忽略本地 model_dir 并重新从模型名称加载
+        quick_test: 是否启用小规模训练预设
 
     返回值含义:
         FinetuneConfig 实例用于统一传递 Qwen2.5 LoRA 指令微调参数
@@ -217,6 +218,7 @@ class FinetuneConfig:
     device: str = "auto"
     local_files_only: bool = False
     force_download: bool = False
+    quick_test: bool = False
 
 
 class InstructionDataset(Dataset):
@@ -323,7 +325,7 @@ def parse_args() -> FinetuneConfig:
     parser.add_argument("--grad-clip", type=float, default=1.0, help="梯度裁剪阈值")
     parser.add_argument("--train-split", type=float, default=0.9, help="训练集样本比例")
     parser.add_argument("--seed", type=int, default=42, help="随机种子")
-    parser.add_argument("--sample-instruction", default="请用一句话解释什么是人工智能", help="训练前后用于生成对比的指令")
+    parser.add_argument("--sample-instruction", default=FinetuneConfig.sample_instruction, help="训练前后用于生成对比的指令")
     parser.add_argument("--sample-input", default="", help="训练前后用于生成对比的输入内容")
     parser.add_argument("--generate-tokens", type=int, default=128, help="生成的新 token 数量")
     parser.add_argument("--do-sample", action="store_true", help="生成样例时启用随机采样，默认使用确定性生成")
@@ -334,8 +336,48 @@ def parse_args() -> FinetuneConfig:
     parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"], help="运行设备")
     parser.add_argument("--local-files-only", action="store_true", help="只从本地缓存或本地目录加载模型")
     parser.add_argument("--force-download", action="store_true", help="忽略本地 model_dir 并重新从 model_name 加载")
+    parser.add_argument("--quick-test", action="store_true", help="启用小规模训练预设，便于先快速观察效果")
     args = parser.parse_args()
-    return FinetuneConfig(**vars(args))
+    return apply_quick_test_preset(FinetuneConfig(**vars(args)))
+
+
+def apply_quick_test_preset(config: FinetuneConfig) -> FinetuneConfig:
+    """应用小规模训练预设，便于快速验证 Qwen LoRA 微调链路
+
+    参数含义:
+        config: 命令行解析得到的原始微调配置
+
+    返回值含义:
+        返回应用小规模训练预设后的配置对象，未启用 quick_test 时原样返回
+    """
+
+    if not config.quick_test:
+        return config
+
+    default_config = FinetuneConfig()
+    if config.output_dir == default_config.output_dir:
+        config.output_dir = "outputs_qwen_lora_quick_test"
+    if config.max_samples == default_config.max_samples or config.max_samples <= 0:
+        config.max_samples = 256
+    if config.max_length == default_config.max_length:
+        config.max_length = 512
+    if config.gradient_accumulation_steps == default_config.gradient_accumulation_steps:
+        config.gradient_accumulation_steps = 4
+    if config.max_steps == default_config.max_steps:
+        config.max_steps = 80
+    if config.eval_interval == default_config.eval_interval:
+        config.eval_interval = 10
+    if config.eval_batches == default_config.eval_batches:
+        config.eval_batches = 10
+    if config.early_stopping_patience == default_config.early_stopping_patience:
+        config.early_stopping_patience = 3
+    if config.warmup_steps == default_config.warmup_steps:
+        config.warmup_steps = 10
+    if config.generate_tokens == default_config.generate_tokens:
+        config.generate_tokens = 64
+    if config.no_repeat_ngram_size == default_config.no_repeat_ngram_size:
+        config.no_repeat_ngram_size = 6
+    return config
 
 
 def set_seed(seed: int) -> None:
@@ -899,7 +941,7 @@ def build_supervised_sample(
 
     original_prefix_length = len(prefix_ids)
     original_output_length = len(output_ids)
-    max_total_length = max_length + 1
+    max_total_length = max_length
     if len(prefix_ids) >= max_total_length:
         prefix_ids = prefix_ids[-(max_total_length - 1) :]
 
@@ -907,11 +949,11 @@ def build_supervised_sample(
     output_ids = output_ids[:available_output_length]
     ids = prefix_ids + output_ids
     answer_start = len(prefix_ids)
-    effective_length = max(len(ids) - 1, 0)
+    effective_length = len(ids)
 
-    input_ids = ids[:-1]
-    labels = ids[1:]
-    ignore_count = max(answer_start - 1, 0)
+    input_ids = list(ids)
+    labels = list(ids)
+    ignore_count = answer_start
     labels[:ignore_count] = [-100] * min(ignore_count, len(labels))
 
     attention_mask = [1] * len(input_ids)
@@ -1089,8 +1131,8 @@ def validate_config(config: FinetuneConfig) -> None:
         无返回值，配置非法时抛出 ValueError
     """
 
-    if config.max_length <= 0:
-        raise ValueError("max_length 必须大于 0")
+    if config.max_length < 2:
+        raise ValueError("max_length 必须大于等于 2")
     if config.batch_size <= 0:
         raise ValueError("batch_size 必须大于 0")
     if config.gradient_accumulation_steps <= 0:

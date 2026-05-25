@@ -5,6 +5,7 @@ models/
 outputs_instruction_finetune/
 outputs_pretrain/
 outputs_qwen_lora_finetune/
+outputs_qwen_lora_quick_test/
 
 *.pyc
 *.log

@@ -27,6 +27,7 @@ There is currently no configured formatter, linter, type checker, or unit test s
 - Use `torch.no_grad()` for inference / evaluation helpers
 - Use `model.eval()` for inference and evaluation paths
 - Set random seeds for training workflows where reproducibility matters
+- 给 Hugging Face `AutoModelForCausalLM(..., labels=labels)` 传入监督微调样本时，不要在数据集里手动右移 `labels`，模型内部会执行 causal LM shift，数据集只需要让 `input_ids` 和 `labels` 对齐并把非监督区域设为 `-100`
 
 Reference files:
 
@@ -78,6 +79,7 @@ Use the lowest-cost checks that match the change:
 - Encoding: verify changed Python files are UTF-8 without BOM and CRLF when the task rewrites files
 - Data loaders: test malformed records directly when changing JSON / JSONL parsing
 - Generation helpers: test prompt construction and token slicing separately from full model loading when possible
+- Hugging Face causal LM 微调样本：检查 `input_ids` 与 `labels` 长度一致，prompt 区域为 `-100`，assistant 回答区域保留原 token，不做额外右移
 
 Long training runs and real model inference are not required for every code edit. Prefer smoke checks that do not download models or require large local artifacts unless the task specifically targets training behavior.
 
