@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 2
-- **Last Active**: 2026-05-25
+- **Total Sessions**: 3
+- **Last Active**: 2026-05-26
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~73 | Active |
+| `journal-1.md` | ~114 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 3 | 2026-05-26 | Qwen LoRA 微调修复与 sub-agent 切换 | `0891714`, `3a7b289`, `251f30c` | `main` |
 | 2 | 2026-05-25 | Bootstrap Python Trellis Guidelines | `a2d05fb` | `main` |
 | 1 | 2026-05-25 | Qwen LoRA 回答对比脚本 | `4ff82d4` | `main` |
 <!-- @@@/auto:session-history -->

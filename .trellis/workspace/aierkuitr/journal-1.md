@@ -77,3 +77,38 @@ Filled Trellis specs for the Python ML script repository, replaced the scaffolde
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: Qwen LoRA 微调修复与 sub-agent 切换
+
+**Date**: 2026-05-26
+**Task**: Qwen LoRA 微调修复与 sub-agent 切换
+**Branch**: `main`
+
+### Summary
+
+修复 Qwen LoRA 指令微调样本 label 对齐，新增 quick-test 小规模训练预设，启用 Codex sub-agent dispatch，并补充相关 Python 质量规范。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0891714` | (see git log) |
+| `3a7b289` | (see git log) |
+| `251f30c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
