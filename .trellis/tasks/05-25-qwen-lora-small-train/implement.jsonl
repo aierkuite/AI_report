@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/python/index.md", "reason": "Python 机器学习脚本任务的规范入口"}
+{"file": ".trellis/spec/python/directory-structure.md", "reason": "确认训练脚本、数据目录、模型目录和输出目录约定"}
+{"file": ".trellis/spec/python/quality-guidelines.md", "reason": "确认 Python 脚本风格、CLI、微调 label 对齐和验证要求"}
+{"file": ".trellis/spec/python/error-handling.md", "reason": "确认 CLI 参数校验、缺失依赖和模型加载错误处理约定"}
+{"file": ".trellis/spec/python/logging-guidelines.md", "reason": "确认训练过程打印和产物日志约定"}
+{"file": ".trellis/spec/python/database-guidelines.md", "reason": "确认 JSON/JSONL 指令数据和训练产物文件约定"}
