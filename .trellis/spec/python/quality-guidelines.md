@@ -54,6 +54,8 @@ Reference files:
 
 All CLI scripts should support `--help` through `argparse`.
 
+Prefer Python 3.8-compatible `argparse` actions such as `store_true` and `store_false` for boolean switches. Do not use `argparse.BooleanOptionalAction` unless the project runtime is explicitly guaranteed to be Python 3.9 or newer.
+
 For local inspection tools, keep help available without requiring heavy model loads. `qwen_lora_compare.py` does this by lazily importing `torch`, `transformers`, and `peft`.
 
 The current Qwen LoRA comparison contract is:
@@ -82,6 +84,19 @@ Use the lowest-cost checks that match the change:
 - Hugging Face causal LM 微调样本：检查 `input_ids` 与 `labels` 长度一致，prompt 区域为 `-100`，assistant 回答区域保留原 token，不做额外右移
 
 Long training runs and real model inference are not required for every code edit. Prefer smoke checks that do not download models or require large local artifacts unless the task specifically targets training behavior.
+
+---
+
+## MiniGPT Instruction Tuning Checks
+
+When improving `mini.py` instruction fine-tuning quality, check the full training and generation boundary before adding more steps:
+
+- Supervised samples should append an explicit answer-end token and mask only the prompt region with `-100`
+- Generation should stop on the answer-end token and strip repeated prompt markers from the decoded answer
+- For tiny character-level models, prefer compact Chinese prompt templates and short target answers over long Alpaca-style prompts when the task is short-answer coursework
+- If a broad instruction dataset underfits target questions, add a small focused UTF-8 JSON / JSONL dataset under `data_instruction/`, expand equivalent phrasings for the same concept, and mix it into training with an explicit repeat count, while keeping validation mixed only once
+- When focused data starts to behave like memorized answers, lower the repeat count before adding more training steps
+- Decode with conservative defaults for coursework comparisons, then use greedy decoding such as `--temperature 0 --top-k 0` when checking whether training learned a stable answer
 
 ---
 

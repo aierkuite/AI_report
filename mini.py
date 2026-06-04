@@ -17,8 +17,10 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 
-from mini_gpt_step2 import GPTConfig, MiniGPT, count_parameters, generate
+from mini_gpt_step2 import GPTConfig, MiniGPT, count_parameters
 from mini_gpt_step3_pretrain import CharTokenizer
+
+PROMPT_STOP_MARKERS = ("### 指令:", "### 输入:", "### 回答:", "问：", "输入：", "答：")
 
 
 DEFAULT_INSTRUCTION_EXAMPLES = [
@@ -110,22 +112,28 @@ class FinetuneConfig:
         grad_clip: 梯度裁剪阈值
         train_split: 训练样本占全部样本的比例
         seed: 随机种子
+        focus_data: 需要重复混入训练集的高质量短回答数据文件或目录
+        focus_repeat: 高质量短回答数据重复混入次数
+        focus_augment: 是否自动扩增重点短回答样本的等价问法
+        max_output_chars: 每条回答最多保留的字符数，0 表示不截断
+        prompt_style: 提示词模板风格，compact 表示短模板，alpaca 表示原始模板
         sample_instruction: 训练前后用于生成效果对比的指令
         sample_input: 训练前后用于生成效果对比的输入内容
         generate_tokens: 每次效果测试生成的新 token 数量
         temperature: 生成采样温度
         top_k: 生成时保留概率最高的候选 token 数量
+        eos_token: 回答结束特殊 token
         device: 运行设备，auto 表示自动选择 cuda 或 cpu
 
     返回值含义:
         FinetuneConfig 实例用于统一传递指令微调参数
     """
 
-    data_dir: str = "data_instruction"
+    data_dir: str = "data_instruction/alpaca_gpt4_data_zh.json"
     pretrained: str = "outputs_pretrain/mini_gpt_pretrained.pt"
     output_dir: str = "outputs_instruction_finetune"
     batch_size: int = 4
-    max_steps: int = 300
+    max_steps: int = 5000
     eval_interval: int = 50
     eval_batches: int = 10
     learning_rate: float = 1e-4
@@ -133,11 +141,17 @@ class FinetuneConfig:
     grad_clip: float = 1.0
     train_split: float = 0.9
     seed: int = 42
+    focus_data: str = "data_instruction/minigpt_focus_short_zh.json"
+    focus_repeat: int = 120
+    focus_augment: bool = True
+    max_output_chars: int = 36
+    prompt_style: str = "compact"
     sample_instruction: str = "请用一句话解释什么是人工智能"
     sample_input: str = ""
-    generate_tokens: int = 120
-    temperature: float = 0.8
-    top_k: int = 20
+    generate_tokens: int = 60
+    temperature: float = 0.3
+    top_k: int = 5
+    eos_token: str = "<EOS>"
     device: str = "auto"
 
 
@@ -149,6 +163,9 @@ class InstructionDataset(Dataset):
         examples: list[InstructionExample],
         tokenizer: CharTokenizer,
         context_length: int,
+        eos_id: int,
+        prompt_style: str,
+        max_output_chars: int,
     ) -> None:
         """初始化指令微调数据集
 
@@ -156,15 +173,32 @@ class InstructionDataset(Dataset):
             examples: 指令样本列表
             tokenizer: 字符级分词器
             context_length: 模型支持的最大输入 token 数量
+            eos_id: 回答结束特殊 token 的编号
+            prompt_style: 提示词模板风格
+            max_output_chars: 每条回答最多保留的字符数，0 表示不截断
 
         返回值含义:
             无返回值，预先编码所有样本以便训练时读取
         """
 
-        self.samples = [
-            build_supervised_sample(example, tokenizer, context_length)
-            for example in examples
-        ]
+        self.samples: list[tuple[torch.Tensor, torch.Tensor]] = []
+        self.skipped_examples = 0
+        for example in examples:
+            sample = build_supervised_sample(
+                example,
+                tokenizer,
+                context_length,
+                eos_id,
+                prompt_style,
+                max_output_chars,
+            )
+            if sample is None:
+                self.skipped_examples += 1
+                continue
+            self.samples.append(sample)
+
+        if not self.samples:
+            raise ValueError("没有可用的指令样本，请减少输入长度或增大 context_length")
 
     def __len__(self) -> int:
         """返回数据集样本数量
@@ -202,26 +236,74 @@ def parse_args() -> FinetuneConfig:
     """
 
     parser = argparse.ArgumentParser(description="第 4 步小参数量 GPT 类模型指令微调程序")
-    parser.add_argument("--data-dir", default="data_instruction", help="存放 json 或 jsonl 指令微调数据的目录")
+    parser.add_argument("--data-dir", default="data_instruction/alpaca_gpt4_data_zh.json", help="存放 json 或 jsonl 指令微调数据的目录或文件")
     parser.add_argument("--pretrained", default="outputs_pretrain/mini_gpt_pretrained.pt", help="第 3 步预训练 checkpoint 路径")
     parser.add_argument("--output-dir", default="outputs_instruction_finetune", help="保存微调产物的目录")
     parser.add_argument("--batch-size", type=int, default=4, help="每个 batch 的样本数量")
-    parser.add_argument("--max-steps", type=int, default=1000, help="最大微调步数")
+    parser.add_argument("--max-steps", type=int, default=5000, help="最大微调步数")
     parser.add_argument("--eval-interval", type=int, default=50, help="评估间隔步数")
     parser.add_argument("--eval-batches", type=int, default=10, help="每次评估最多使用的 batch 数量")
-    parser.add_argument("--learning-rate", type=float, default=5e-4, help="学习率")
+    parser.add_argument("--learning-rate", type=float, default=1e-4, help="学习率")
     parser.add_argument("--weight-decay", type=float, default=0.05, help="权重衰减")
     parser.add_argument("--grad-clip", type=float, default=1.0, help="梯度裁剪阈值")
     parser.add_argument("--train-split", type=float, default=0.9, help="训练集样本比例")
     parser.add_argument("--seed", type=int, default=42, help="随机种子")
+    parser.add_argument("--focus-data", default="data_instruction/minigpt_focus_short_zh.json", help="重复混入训练集的高质量短回答数据文件或目录")
+    parser.add_argument("--focus-repeat", type=int, default=120, help="高质量短回答数据重复混入次数，传入 0 表示不混入")
+    parser.set_defaults(focus_augment=True)
+    parser.add_argument("--focus-augment", dest="focus_augment", action="store_true", help="开启重点短回答样本等价问法扩增")
+    parser.add_argument("--no-focus-augment", dest="focus_augment", action="store_false", help="关闭重点短回答样本等价问法扩增")
+    parser.add_argument("--max-output-chars", type=int, default=36, help="每条回答最多保留的字符数，传入 0 表示不截断")
+    parser.add_argument("--prompt-style", default="compact", choices=["compact", "alpaca"], help="提示词模板风格")
     parser.add_argument("--sample-instruction", default="请用一句话解释什么是人工智能", help="训练前后用于生成对比的指令")
     parser.add_argument("--sample-input", default="", help="训练前后用于生成对比的输入内容")
-    parser.add_argument("--generate-tokens", type=int, default=120, help="生成的新 token 数量")
-    parser.add_argument("--temperature", type=float, default=0.8, help="生成采样温度")
-    parser.add_argument("--top-k", type=int, default=20, help="生成时保留的候选 token 数量")
+    parser.add_argument("--generate-tokens", type=int, default=60, help="生成的新 token 数量")
+    parser.add_argument("--temperature", type=float, default=0.3, help="生成采样温度，传入 0 表示贪心解码")
+    parser.add_argument("--top-k", type=int, default=5, help="生成时保留的候选 token 数量，传入 0 表示不限制")
+    parser.add_argument("--eos-token", default="<EOS>", help="指令回答结束特殊 token")
     parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"], help="运行设备")
     args = parser.parse_args()
     return FinetuneConfig(**vars(args))
+
+
+def validate_config(config: FinetuneConfig) -> None:
+    """校验指令微调配置是否满足训练和生成的基本约束
+
+    参数含义:
+        config: 指令微调配置对象
+
+    返回值含义:
+        无返回值，配置非法时抛出 ValueError
+    """
+
+    if config.batch_size <= 0:
+        raise ValueError("batch_size 必须大于 0")
+    if config.max_steps <= 0:
+        raise ValueError("max_steps 必须大于 0")
+    if config.eval_interval <= 0:
+        raise ValueError("eval_interval 必须大于 0")
+    if config.eval_batches <= 0:
+        raise ValueError("eval_batches 必须大于 0")
+    if config.learning_rate <= 0:
+        raise ValueError("learning_rate 必须大于 0")
+    if not 0 < config.train_split < 1:
+        raise ValueError("train_split 必须位于 0 和 1 之间")
+    if config.focus_repeat < 0:
+        raise ValueError("focus_repeat 不能小于 0")
+    if config.max_output_chars < 0:
+        raise ValueError("max_output_chars 不能小于 0")
+    if config.generate_tokens <= 0:
+        raise ValueError("generate_tokens 必须大于 0")
+    if config.temperature < 0:
+        raise ValueError("temperature 不能小于 0")
+    if config.top_k < 0:
+        raise ValueError("top_k 不能小于 0")
+    if config.weight_decay < 0:
+        raise ValueError("weight_decay 不能小于 0")
+    if config.grad_clip <= 0:
+        raise ValueError("grad_clip 必须大于 0")
+    if not config.eos_token:
+        raise ValueError("eos_token 不能为空")
 
 
 def set_seed(seed: int) -> None:
@@ -272,23 +354,37 @@ def normalize_text(text: str) -> str:
     return str(text).replace("\r\n", "\n").replace("\r", "\n").strip()
 
 
-def format_prompt(instruction: str, input_text: str, output: str | None = None) -> str:
+def format_prompt(
+    instruction: str,
+    input_text: str,
+    output: str | None = None,
+    prompt_style: str = "alpaca",
+) -> str:
     """把指令样本转换为统一提示词模板
 
     参数含义:
         instruction: 任务指令文本
         input_text: 任务输入文本，可以为空
         output: 标准回答文本，传入 None 时只生成回答前缀
+        prompt_style: 提示词模板风格，compact 使用短问答模板，alpaca 使用原始段落模板
 
     返回值含义:
         返回格式化后的完整提示词或回答前缀
     """
 
-    prompt = (
-        f"### 指令:\n{normalize_text(instruction)}\n\n"
-        f"### 输入:\n{normalize_text(input_text)}\n\n"
-        "### 回答:\n"
-    )
+    instruction_text = normalize_text(instruction)
+    input_value = normalize_text(input_text)
+    if prompt_style == "compact":
+        if input_value:
+            prompt = f"问：{instruction_text}\n输入：{input_value}\n答："
+        else:
+            prompt = f"问：{instruction_text}\n答："
+    else:
+        prompt = (
+            f"### 指令:\n{instruction_text}\n\n"
+            f"### 输入:\n{input_value}\n\n"
+            "### 回答:\n"
+        )
     if output is None:
         return prompt
     return prompt + normalize_text(output)
@@ -398,11 +494,15 @@ def load_json_instruction_examples(file_path: Path) -> list[InstructionExample]:
     return examples
 
 
-def load_instruction_examples(data_dir: Path) -> tuple[list[InstructionExample], list[Path]]:
+def load_instruction_examples(
+    data_dir: Path,
+    use_default_examples: bool = True,
+) -> tuple[list[InstructionExample], list[Path]]:
     """读取指令微调目录中的所有 json 和 jsonl 文件
 
     参数含义:
         data_dir: 存放 json 或 jsonl 指令微调数据的目录路径，也可以是单个数据文件路径
+        use_default_examples: 未读取到数据文件时是否回退到内置样本
 
     返回值含义:
         返回二元组，第一个值是指令样本列表，第二个值是实际读取的文件路径列表
@@ -419,6 +519,9 @@ def load_instruction_examples(data_dir: Path) -> tuple[list[InstructionExample],
     if examples:
         return examples, data_files
 
+    if not use_default_examples:
+        return [], []
+
     default_examples = [
         InstructionExample(
             instruction=item["instruction"],
@@ -428,6 +531,159 @@ def load_instruction_examples(data_dir: Path) -> tuple[list[InstructionExample],
         for item in DEFAULT_INSTRUCTION_EXAMPLES
     ]
     return default_examples, []
+
+
+def load_focus_instruction_examples(config: FinetuneConfig) -> tuple[list[InstructionExample], list[Path]]:
+    """读取需要重点重复混入训练集的高质量短回答样本
+
+    参数含义:
+        config: 指令微调配置对象，提供 focus_data 和 focus_repeat
+
+    返回值含义:
+        返回二元组，第一个值是重点样本列表，第二个值是实际读取的文件路径列表
+    """
+
+    if config.focus_repeat == 0 or not config.focus_data.strip():
+        return [], []
+
+    focus_examples, focus_files = load_instruction_examples(Path(config.focus_data), use_default_examples=False)
+    if not focus_examples:
+        raise FileNotFoundError(f"focus_data 未读取到可用样本: {config.focus_data}")
+    return focus_examples, focus_files
+
+
+def deduplicate_instruction_examples(examples: list[InstructionExample]) -> list[InstructionExample]:
+    """按指令、输入和输出去除重复的指令样本
+
+    参数含义:
+        examples: 可能包含重复项的指令样本列表
+
+    返回值含义:
+        返回保持原始顺序的去重样本列表
+    """
+
+    unique_examples: list[InstructionExample] = []
+    seen_keys: set[tuple[str, str, str]] = set()
+    for example in examples:
+        key = (
+            normalize_text(example.instruction),
+            normalize_text(example.input),
+            normalize_text(example.output),
+        )
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        unique_examples.append(example)
+    return unique_examples
+
+
+def extract_concept_from_instruction(instruction: str) -> str:
+    """从短问答指令中提取被解释的概念名称
+
+    参数含义:
+        instruction: 原始指令文本
+
+    返回值含义:
+        返回概念名称，无法稳定提取时返回空字符串
+    """
+
+    text = normalize_text(instruction)
+    prefixes = (
+        "请用一句话解释什么是",
+        "请用一句话说明什么是",
+        "请用一句话介绍",
+        "请简单介绍",
+        "请说明",
+        "请解释",
+        "一句话说明",
+        "什么是",
+    )
+    concept = ""
+    for prefix in prefixes:
+        if text.startswith(prefix):
+            concept = text[len(prefix) :].strip()
+            break
+
+    if not concept:
+        for suffix in ("的作用是什么", "有什么作用", "是什么意思", "是什么"):
+            if text.endswith(suffix):
+                concept = text[: -len(suffix)].strip()
+                break
+
+    if not concept:
+        return ""
+
+    for suffix in ("的含义", "是什么意思", "是什么", "有什么作用", "的作用是什么"):
+        if concept.endswith(suffix):
+            concept = concept[: -len(suffix)].strip()
+            break
+
+    concept = concept.strip(" ：:，,。.!！？?\"'“”‘’")
+    if not concept or "\n" in concept or len(concept) > 18:
+        return ""
+    return concept
+
+
+def build_focus_question_variants(example: InstructionExample) -> list[InstructionExample]:
+    """为一条重点短回答样本构造等价问法
+
+    参数含义:
+        example: 原始重点短回答样本
+
+    返回值含义:
+        返回由该样本派生出的等价问法样本列表
+    """
+
+    output = normalize_text(example.output)
+    if not output:
+        return []
+
+    variants: list[InstructionExample] = []
+    if normalize_text(example.input):
+        question = normalize_text(example.input)
+        if question.endswith(("?", "？")):
+            variants.extend(
+                [
+                    InstructionExample(question, "", output),
+                    InstructionExample(f"请用一句话回答：{question}", "", output),
+                ]
+            )
+        return variants
+
+    concept = extract_concept_from_instruction(example.instruction)
+    if not concept:
+        return []
+
+    variant_instructions = [
+        f"请用一句话解释什么是{concept}",
+        f"请用一句话说明什么是{concept}",
+        f"什么是{concept}",
+        f"请解释{concept}",
+        f"一句话说明{concept}",
+        f"{concept}是什么",
+        f"{concept}是什么意思",
+        f"请简单介绍{concept}",
+    ]
+    return [
+        InstructionExample(instruction=variant_instruction, input="", output=output)
+        for variant_instruction in variant_instructions
+    ]
+
+
+def augment_focus_instruction_examples(examples: list[InstructionExample]) -> list[InstructionExample]:
+    """扩增重点短回答样本的常见等价问法
+
+    参数含义:
+        examples: 原始重点短回答样本列表
+
+    返回值含义:
+        返回包含原始样本和扩增样本的去重列表
+    """
+
+    augmented_examples = list(examples)
+    for example in examples:
+        augmented_examples.extend(build_focus_question_variants(example))
+    return deduplicate_instruction_examples(augmented_examples)
 
 
 def load_pretrained_checkpoint(pretrained_path: Path) -> dict[str, object]:
@@ -473,10 +729,10 @@ def collect_text_for_vocab(examples: list[InstructionExample], config: FinetuneC
     """
 
     texts = [
-        format_prompt(example.instruction, example.input, example.output)
+        format_prompt(example.instruction, example.input, example.output, config.prompt_style)
         for example in examples
     ]
-    texts.append(format_prompt(config.sample_instruction, config.sample_input))
+    texts.append(format_prompt(config.sample_instruction, config.sample_input, prompt_style=config.prompt_style))
     return "\n".join(texts)
 
 
@@ -496,6 +752,24 @@ def expand_tokenizer(tokenizer: CharTokenizer, text: str) -> tuple[CharTokenizer
     if not new_tokens:
         return tokenizer, 0
     return CharTokenizer(tokenizer.itos + new_tokens), len(new_tokens)
+
+
+def ensure_special_token(tokenizer: CharTokenizer, token: str) -> tuple[CharTokenizer, int, bool]:
+    """确保字符级分词器包含一个独立特殊 token
+
+    参数含义:
+        tokenizer: 当前字符级分词器
+        token: 需要作为单独词表项加入的特殊 token 文本
+
+    返回值含义:
+        返回更新后的分词器、特殊 token 编号、是否新增了该 token
+    """
+
+    if token in tokenizer.stoi:
+        return tokenizer, tokenizer.stoi[token], False
+
+    token_id = len(tokenizer.itos)
+    return CharTokenizer(tokenizer.itos + [token]), token_id, True
 
 
 def build_model_config(checkpoint: dict[str, object], vocab_size: int) -> GPTConfig:
@@ -601,31 +875,40 @@ def build_supervised_sample(
     example: InstructionExample,
     tokenizer: CharTokenizer,
     context_length: int,
-) -> tuple[torch.Tensor, torch.Tensor]:
+    eos_id: int,
+    prompt_style: str,
+    max_output_chars: int,
+) -> tuple[torch.Tensor, torch.Tensor] | None:
     """把一条指令样本编码为带监督掩码的训练样本
 
     参数含义:
         example: 一条指令微调样本
         tokenizer: 字符级分词器
         context_length: 模型最大输入 token 数量
+        eos_id: 回答结束特殊 token 的编号
+        prompt_style: 提示词模板风格
+        max_output_chars: 每条回答最多保留的字符数，0 表示不截断
 
     返回值含义:
-        返回二元组 input_ids 和 labels，长度均为 context_length
+        返回二元组 input_ids 和 labels，长度均为 context_length，样本过长时返回 None
     """
 
-    prefix = format_prompt(example.instruction, example.input)
+    prefix = format_prompt(example.instruction, example.input, prompt_style=prompt_style)
     output = normalize_text(example.output)
+    if max_output_chars > 0:
+        output = output[:max_output_chars]
     prefix_ids = tokenizer.encode(prefix)
     output_ids = tokenizer.encode(output)
     if not output_ids:
         output_ids = [tokenizer.unk_id]
 
     max_total_length = context_length + 1
-    if len(prefix_ids) >= max_total_length:
-        prefix_ids = prefix_ids[-(max_total_length - 1) :]
+    min_output_length = 2
+    if len(prefix_ids) + min_output_length > max_total_length:
+        return None
 
     available_output_length = max_total_length - len(prefix_ids)
-    output_ids = output_ids[:available_output_length]
+    output_ids = output_ids[: available_output_length - 1] + [eos_id]
     ids = prefix_ids + output_ids
     answer_start = len(prefix_ids)
 
@@ -644,28 +927,68 @@ def build_supervised_sample(
 
 def build_dataloaders(
     examples: list[InstructionExample],
+    focus_examples: list[InstructionExample],
     tokenizer: CharTokenizer,
     model_config: GPTConfig,
     config: FinetuneConfig,
-) -> tuple[DataLoader, DataLoader, list[InstructionExample], list[InstructionExample]]:
+    eos_id: int,
+) -> tuple[DataLoader, DataLoader, list[InstructionExample], list[InstructionExample], int, int, int]:
     """构建训练集和验证集 DataLoader
 
     参数含义:
         examples: 全部指令样本列表
+        focus_examples: 需要重点重复混入训练集的高质量短回答样本列表
         tokenizer: 字符级分词器
         model_config: 模型结构配置对象
         config: 指令微调配置对象
+        eos_id: 回答结束特殊 token 的编号
 
     返回值含义:
-        返回训练 DataLoader、验证 DataLoader、训练样本列表和验证样本列表
+        返回训练 DataLoader、验证 DataLoader、训练样本列表、验证样本列表、被过滤样本数、重点训练样本数和重点验证样本数
     """
 
     train_examples, valid_examples = split_examples(examples, config.train_split, config.seed)
-    train_dataset = InstructionDataset(train_examples, tokenizer, model_config.context_length)
-    valid_dataset = InstructionDataset(valid_examples, tokenizer, model_config.context_length)
+    focus_train_examples: list[InstructionExample] = []
+    focus_valid_examples: list[InstructionExample] = []
+    if focus_examples:
+        focus_train_examples, focus_valid_examples = split_examples(
+            focus_examples,
+            config.train_split,
+            config.seed + 1,
+        )
+
+    repeated_focus_train = focus_train_examples * config.focus_repeat
+    mixed_train_examples = train_examples + repeated_focus_train
+    mixed_valid_examples = valid_examples + focus_valid_examples
+
+    train_dataset = InstructionDataset(
+        mixed_train_examples,
+        tokenizer,
+        model_config.context_length,
+        eos_id,
+        config.prompt_style,
+        config.max_output_chars,
+    )
+    valid_dataset = InstructionDataset(
+        mixed_valid_examples,
+        tokenizer,
+        model_config.context_length,
+        eos_id,
+        config.prompt_style,
+        config.max_output_chars,
+    )
     train_loader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True, drop_last=False)
     valid_loader = DataLoader(valid_dataset, batch_size=config.batch_size, shuffle=False, drop_last=False)
-    return train_loader, valid_loader, train_examples, valid_examples
+    skipped_examples = train_dataset.skipped_examples + valid_dataset.skipped_examples
+    return (
+        train_loader,
+        valid_loader,
+        mixed_train_examples,
+        mixed_valid_examples,
+        skipped_examples,
+        len(focus_train_examples),
+        len(focus_valid_examples),
+    )
 
 
 @torch.no_grad()
@@ -774,6 +1097,78 @@ def train_model(
 
 
 @torch.no_grad()
+def generate_until_eos(
+    model: MiniGPT,
+    idx: torch.Tensor,
+    max_new_tokens: int,
+    temperature: float,
+    top_k: int,
+    eos_id: int,
+    blocked_ids: set[int],
+) -> list[int]:
+    """根据提示 token 逐步生成，遇到 EOS 后停止
+
+    参数含义:
+        model: 用于推理生成的 MiniGPT 模型
+        idx: 初始 token 序列，形状为 batch_size、seq_len
+        max_new_tokens: 最多继续生成的新 token 数量
+        temperature: 采样温度，0 表示贪心解码
+        top_k: 每步采样保留的候选 token 数量，0 表示不限制
+        eos_id: 回答结束特殊 token 的编号
+        blocked_ids: 生成时禁止采出的 token 编号集合
+
+    返回值含义:
+        返回不包含 EOS 的新生成 token 编号列表
+    """
+
+    model.eval()
+    new_token_ids: list[int] = []
+    for _ in range(max_new_tokens):
+        idx_cond = idx[:, -model.config.context_length :]
+        logits = model(idx_cond)
+        logits = logits[:, -1, :].clone()
+        for blocked_id in blocked_ids:
+            if 0 <= blocked_id < logits.size(-1):
+                logits[:, blocked_id] = float("-inf")
+
+        if temperature == 0:
+            next_idx = torch.argmax(logits, dim=-1, keepdim=True)
+        else:
+            logits = logits / temperature
+            if top_k > 0:
+                values, _ = torch.topk(logits, k=min(top_k, logits.size(-1)))
+                logits[logits < values[:, [-1]]] = float("-inf")
+            probs = F.softmax(logits, dim=-1)
+            next_idx = torch.multinomial(probs, num_samples=1)
+
+        next_id = int(next_idx.item())
+        idx = torch.cat((idx, next_idx), dim=1)
+        if next_id == eos_id:
+            break
+        new_token_ids.append(next_id)
+
+    return new_token_ids
+
+
+def strip_generated_answer(text: str) -> str:
+    """清理生成回答中的提示词残留和首尾空白
+
+    参数含义:
+        text: 原始生成回答文本
+
+    返回值含义:
+        返回截断到第一个提示段落标记之前的回答文本
+    """
+
+    answer = text
+    for marker in PROMPT_STOP_MARKERS:
+        marker_index = answer.find(marker)
+        if marker_index >= 0:
+            answer = answer[:marker_index]
+    return answer.strip()
+
+
+@torch.no_grad()
 def generate_instruction_answer(
     model: MiniGPT,
     tokenizer: CharTokenizer,
@@ -782,6 +1177,8 @@ def generate_instruction_answer(
     max_new_tokens: int,
     temperature: float,
     top_k: int,
+    eos_id: int,
+    prompt_style: str,
     device: torch.device,
 ) -> str:
     """使用模型根据指令生成回答文本
@@ -794,27 +1191,32 @@ def generate_instruction_answer(
         max_new_tokens: 需要继续生成的新 token 数量
         temperature: 采样温度
         top_k: 每步采样保留的候选 token 数量
+        eos_id: 回答结束特殊 token 的编号
+        prompt_style: 提示词模板风格
         device: 执行生成的设备
 
     返回值含义:
-        返回解码后的完整提示词和生成内容
+        返回解码后的完整提示词和回答内容，不包含隐藏结束 token
     """
 
     model.eval()
-    prompt = format_prompt(instruction, input_text)
+    prompt = format_prompt(instruction, input_text, prompt_style=prompt_style)
     token_ids = tokenizer.encode(prompt)
     if not token_ids:
         token_ids = [tokenizer.unk_id]
     token_ids = token_ids[-model.config.context_length :]
     idx = torch.tensor([token_ids], dtype=torch.long, device=device)
-    generated = generate(
+    generated_ids = generate_until_eos(
         model=model,
         idx=idx,
         max_new_tokens=max_new_tokens,
         temperature=temperature,
         top_k=top_k,
+        eos_id=eos_id,
+        blocked_ids={tokenizer.pad_id, tokenizer.unk_id},
     )
-    return tokenizer.decode(generated[0].tolist())
+    answer = strip_generated_answer(tokenizer.decode(generated_ids))
+    return prompt + answer
 
 
 def save_json(data: dict[str, object], file_path: Path) -> None:
@@ -937,29 +1339,67 @@ def main() -> None:
     """
 
     config = parse_args()
+    validate_config(config)
     set_seed(config.seed)
     device = select_device(config.device)
 
     checkpoint = load_pretrained_checkpoint(Path(config.pretrained))
     examples, data_files = load_instruction_examples(Path(config.data_dir))
+    raw_focus_examples, focus_files = load_focus_instruction_examples(config)
+    focus_examples = (
+        augment_focus_instruction_examples(raw_focus_examples)
+        if config.focus_augment
+        else raw_focus_examples
+    )
+    all_vocab_examples = examples + focus_examples
     tokenizer = tokenizer_from_checkpoint(checkpoint)
-    tokenizer, added_tokens = expand_tokenizer(tokenizer, collect_text_for_vocab(examples, config))
+    tokenizer, text_added_tokens = expand_tokenizer(tokenizer, collect_text_for_vocab(all_vocab_examples, config))
+    tokenizer, eos_id, added_eos_token = ensure_special_token(tokenizer, config.eos_token)
+    added_tokens = text_added_tokens + int(added_eos_token)
     model_config = build_model_config(checkpoint, len(tokenizer.itos))
     model = MiniGPT(model_config)
     loaded_keys, resized_keys, skipped_keys = load_state_dict_with_resize(model, checkpoint)
     model = model.to(device)
-    train_loader, valid_loader, train_examples, valid_examples = build_dataloaders(examples, tokenizer, model_config, config)
+    (
+        train_loader,
+        valid_loader,
+        train_examples,
+        valid_examples,
+        skipped_examples,
+        focus_train_count,
+        focus_valid_count,
+    ) = build_dataloaders(
+        examples,
+        focus_examples,
+        tokenizer,
+        model_config,
+        config,
+        eos_id,
+    )
     total_params, trainable_params = count_parameters(model)
 
     print("第 4 步指令微调配置:")
     print(config)
     print(f"运行设备: {device}")
-    print(f"读取指令文件数: {len(data_files)}")
-    print(f"指令样本数: {len(examples):,}")
-    print(f"训练样本数: {len(train_examples):,}")
-    print(f"验证样本数: {len(valid_examples):,}")
+    print(f"读取通用指令文件数: {len(data_files)}")
+    print(f"读取重点短回答文件数: {len(focus_files)}")
+    print(f"通用指令样本数: {len(examples):,}")
+    print(f"重点短回答原始样本数: {len(raw_focus_examples):,}")
+    print(f"重点短回答增强后样本数: {len(focus_examples):,}")
+    print(f"重点训练样本数: {focus_train_count:,}")
+    print(f"重点验证样本数: {focus_valid_count:,}")
+    print(f"重点训练样本重复次数: {config.focus_repeat:,}")
+    print(f"重点短回答问法扩增: {config.focus_augment}")
+    print(f"训练混合原始样本数: {len(train_examples):,}")
+    print(f"验证混合原始样本数: {len(valid_examples):,}")
+    print(f"训练可用样本数: {len(train_loader.dataset):,}")
+    print(f"验证可用样本数: {len(valid_loader.dataset):,}")
+    print(f"过滤过长样本数: {skipped_examples:,}")
+    print(f"提示词模板: {config.prompt_style}")
+    print(f"回答截断字符数: {config.max_output_chars}")
     print(f"词表大小: {len(tokenizer.itos):,}")
     print(f"新增 token 数: {added_tokens:,}")
+    print(f"EOS token: {config.eos_token} -> {eos_id}")
     print(f"模型总参数量: {total_params:,}")
     print(f"模型可训练参数量: {trainable_params:,}")
     print(f"直接加载参数数: {len(loaded_keys):,}")
@@ -975,6 +1415,8 @@ def main() -> None:
         config.generate_tokens,
         config.temperature,
         config.top_k,
+        eos_id,
+        config.prompt_style,
         device,
     )
     print(before_text)
@@ -991,6 +1433,8 @@ def main() -> None:
         config.generate_tokens,
         config.temperature,
         config.top_k,
+        eos_id,
+        config.prompt_style,
         device,
     )
     print(after_text)
