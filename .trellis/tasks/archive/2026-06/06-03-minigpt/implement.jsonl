@@ -1,0 +1,5 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/python/index.md", "reason": "Python ML script guidelines for MiniGPT training changes"}
+{"file": ".trellis/spec/python/database-guidelines.md", "reason": "File-based data and checkpoint artifact conventions"}
+{"file": ".trellis/spec/python/quality-guidelines.md", "reason": "Quality and verification requirements for Python ML scripts"}
+{"file": ".trellis/spec/python/error-handling.md", "reason": "CLI validation and data failure patterns"}
