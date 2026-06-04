@@ -112,3 +112,36 @@ Filled Trellis specs for the Python ML script repository, replaced the scaffolde
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: 改进 MiniGPT 指令微调稳定性
+
+**Date**: 2026-06-04
+**Task**: 改进 MiniGPT 指令微调稳定性
+**Branch**: `main`
+
+### Summary
+
+修复 MiniGPT 指令微调生成发散问题，增加 EOS 停止、短中文重点问答数据、等价问法扩增和 Python 3.8 argparse 兼容；已验证 py_compile、JSON 结构和 diff --check。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `08289e8` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
