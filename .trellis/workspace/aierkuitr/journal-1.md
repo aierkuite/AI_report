@@ -145,3 +145,37 @@ Filled Trellis specs for the Python ML script repository, replaced the scaffolde
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: Qwen 分类微调脚本
+
+**Date**: 2026-06-06
+**Task**: Qwen 分类微调脚本
+**Branch**: `main`
+
+### Summary
+
+新增 Qwen2.5 外卖评论分类微调和推理脚本，补充 waimai_10k 标签映射、错标修正、困难样本、NaN 检查和分类规范文档。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7e5f7c9` | (see git log) |
+| `c1206e6` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
