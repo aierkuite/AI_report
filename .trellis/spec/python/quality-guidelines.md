@@ -100,6 +100,19 @@ When improving `mini.py` instruction fine-tuning quality, check the full trainin
 
 ---
 
+## Qwen Classification Fine-Tuning Checks
+
+When adding or changing Qwen classification fine-tuning scripts, check that the classifier is a true sequence-classification workflow rather than a generation prompt workaround:
+
+- Use `AutoModelForSequenceClassification` for Qwen classification fine-tuning
+- For LoRA classification, use `TaskType.SEQ_CLS` and save the classification head with `modules_to_save=["score"]`
+- `waimai_10k.csv` should work directly with `label,review`; normalize `0/1` labels to human-readable `差评/好评`
+- Build and save a deterministic `label_to_id` / `id_to_label` mapping with the classification artifacts
+- Save classification metrics such as train / validation loss and accuracy, data stats, plus sample predictions before and after training
+- Keep `--help` usable in the current agent environment when possible, especially if the script can avoid importing heavy ML dependencies before argument help exits
+
+---
+
 ## Code Review Checklist
 
 Reviewers should check:

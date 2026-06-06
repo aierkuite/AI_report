@@ -11,9 +11,12 @@ The project currently uses flat, task-oriented Python scripts rather than a `src
 ```text
 .
 |-- mini.py
+|-- mini_gpt_classification_finetune.py
 |-- mini_gpt_step2.py
 |-- mini_gpt_step3_pretrain.py
 |-- mini_gpt_step4_instruction_finetune-gpt_chinese.py
+|-- qwen_classification_finetune.py
+|-- qwen_classification_infer.py
 |-- qwen_instruction_infer.py
 |-- qwen_lora_compare.py
 |-- data_pretrain/
@@ -29,6 +32,9 @@ Reference files:
 
 - `mini_gpt_step2.py` defines the reusable MiniGPT model architecture
 - `mini_gpt_step3_pretrain.py` imports `GPTConfig`, `MiniGPT`, `count_parameters`, and `generate` from `mini_gpt_step2.py`
+- `qwen_classification_finetune.py` owns the Qwen2.5 sequence-classification LoRA fine-tuning workflow
+- `mini_gpt_classification_finetune.py` is a compatibility entrypoint that forwards to `qwen_classification_finetune.py`
+- `qwen_classification_infer.py` loads the Qwen classification LoRA adapter and label mapping for local review classification
 - `mini_gpt_step4_instruction_finetune-gpt_chinese.py` owns the Qwen LoRA instruction tuning workflow
 - `qwen_instruction_infer.py` and `qwen_lora_compare.py` are standalone command-line inspection tools
 
@@ -67,6 +73,7 @@ Use these directories consistently:
 - `models/` for local downloaded or cached model directories
 - `outputs_pretrain/` for MiniGPT pretraining checkpoints, tokenizer JSON, config JSON, and loss logs
 - `outputs_qwen_lora_finetune/` for LoRA adapters, finetune configs, loss logs, sample outputs, and data stats
+- `outputs_qwen_classification_finetune/` for Qwen classification LoRA adapters, label mappings, configs, metrics logs, data stats, and sample predictions
 - `artical/` for generated article / continuation text outputs
 
 Heavy runtime directories are ignored in `.gitignore`. Do not commit model weights, generated checkpoints, cache directories, logs, or `__pycache__/`.
