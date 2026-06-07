@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 6
+- **Total Sessions**: 7
 - **Last Active**: 2026-06-07
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~214 | Active |
+| `journal-1.md` | ~247 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 7 | 2026-06-07 | MiniGPT Alpaca 故事指令微调 | `9f53bcc` | `main` |
 | 6 | 2026-06-07 | 优化 true pretrain loss | `f40cada` | `main` |
 | 5 | 2026-06-06 | Qwen 分类微调脚本 | `7e5f7c9`, `c1206e6` | `main` |
 | 4 | 2026-06-04 | 改进 MiniGPT 指令微调稳定性 | `08289e8` | `main` |

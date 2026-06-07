@@ -212,3 +212,36 @@ Filled Trellis specs for the Python ML script repository, replaced the scaffolde
 ### Next Steps
 
 - None - task complete
+
+
+## Session 7: MiniGPT Alpaca 故事指令微调
+
+**Date**: 2026-06-07
+**Task**: MiniGPT Alpaca 故事指令微调
+**Branch**: `main`
+
+### Summary
+
+优化 MiniGPT Alpaca 故事指令微调默认数据筛选，扩大故事生成训练样本，补充早停和最佳验证权重恢复，并同步对比脚本默认路径
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9f53bcc` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
