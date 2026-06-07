@@ -1,6 +1,14 @@
 .idea/
 __pycache__/
 
+.agents/skills/
+.claude/
+.codex/
+.trellis/
+artical/
+data_pretrain/
+AGENTS.md
+
 models/
 outputs_instruction_finetune/
 outputs_instruction_finetune_v2/
@@ -20,6 +28,8 @@ data_pretrain/true_pretrain/
 *.pyc
 *.log
 *.tmp
+*.pdf
+*.docx
 ~$*
 ~WRL*.tmp
 从零构建大模型*.pdf
