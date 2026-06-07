@@ -179,3 +179,36 @@ Filled Trellis specs for the Python ML script repository, replaced the scaffolde
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: 优化 true pretrain loss
+
+**Date**: 2026-06-07
+**Task**: 优化 true pretrain loss
+**Branch**: `main`
+
+### Summary
+
+优化 mini_gpt_true_pretrain.py 默认真实预训练策略，加入低频字符过滤统计，并按用户要求切换为 TinyStories-Zh 默认训练源。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f40cada` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

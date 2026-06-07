@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 5
-- **Last Active**: 2026-06-06
+- **Total Sessions**: 6
+- **Last Active**: 2026-06-07
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~181 | Active |
+| `journal-1.md` | ~214 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 6 | 2026-06-07 | 优化 true pretrain loss | `f40cada` | `main` |
 | 5 | 2026-06-06 | Qwen 分类微调脚本 | `7e5f7c9`, `c1206e6` | `main` |
 | 4 | 2026-06-04 | 改进 MiniGPT 指令微调稳定性 | `08289e8` | `main` |
 | 3 | 2026-05-26 | Qwen LoRA 微调修复与 sub-agent 切换 | `0891714`, `3a7b289`, `251f30c` | `main` |
