@@ -21,27 +21,6 @@ from mini_gpt_step2 import GPTConfig, MiniGPT, count_parameters
 from mini_gpt_step3_pretrain import CharTokenizer
 
 PROMPT_STOP_MARKERS = ("### 指令:", "### 输入:", "### 回答:", "问：", "输入：", "答：")
-DATA_FILTER_CHOICES = ("none", "story_generation", "story_input")
-STORY_GENERATION_INCLUDE_KEYWORDS = ("写", "编写", "创作", "创造", "构建", "生成", "讲述", "讲一个", "续写", "结局", "开头", "完成", "添加")
-STORY_GENERATION_EXCLUDE_KEYWORDS = (
-    "问题",
-    "采访",
-    "文学元素",
-    "元素列表",
-    "列表",
-    "建议",
-    "转折",
-    "分析",
-    "评价",
-    "识别",
-    "提取",
-    "总结",
-    "概括",
-    "标题",
-    "规则",
-    "输入框",
-    "输出框",
-)
 
 
 DEFAULT_INSTRUCTION_EXAMPLES = [
@@ -124,14 +103,10 @@ class FinetuneConfig:
         data_dir: 存放指令微调 json 或 jsonl 数据的目录
         pretrained: 第 3 步保存的预训练 checkpoint 路径
         output_dir: 存放微调权重、分词器、日志和样例输出的目录
-        data_filter: 指令样本筛选策略，story_generation 表示保留故事生成样本，story_input 表示只保留带输入的故事生成样本
-        input_repeat: 带输入样本额外重复混入训练集的次数，验证集不重复
         batch_size: 每次训练使用的样本数量
         max_steps: 最大微调步数
         eval_interval: 每隔多少步评估一次训练集和验证集损失
         eval_batches: 每次评估最多使用的 batch 数量
-        early_stopping_patience: 验证损失连续多少次评估无改善后提前停止，0 表示关闭
-        early_stopping_min_delta: 验证损失下降超过该阈值才视为有效改善
         learning_rate: AdamW 优化器学习率
         weight_decay: AdamW 优化器权重衰减系数
         grad_clip: 梯度裁剪阈值
@@ -155,31 +130,27 @@ class FinetuneConfig:
     """
 
     data_dir: str = "data_instruction/alpaca_gpt4_data_zh.json"
-    pretrained: str = "outputs_true_pretrain_tinystories/mini_gpt_pretrained.pt"
-    output_dir: str = "outputs_true_pretrain_alpaca_story_generation_finetune"
-    data_filter: str = "story_generation"
-    input_repeat: int = 2
+    pretrained: str = "outputs_pretrain/mini_gpt_pretrained.pt"
+    output_dir: str = "outputs_instruction_finetune"
     batch_size: int = 4
-    max_steps: int = 600
-    eval_interval: int = 25
+    max_steps: int = 5000
+    eval_interval: int = 50
     eval_batches: int = 10
-    early_stopping_patience: int = 4
-    early_stopping_min_delta: float = 0.01
-    learning_rate: float = 5e-5
+    learning_rate: float = 1e-4
     weight_decay: float = 0.05
     grad_clip: float = 1.0
     train_split: float = 0.9
     seed: int = 42
-    focus_data: str = ""
-    focus_repeat: int = 0
-    focus_augment: bool = False
-    max_output_chars: int = 0
+    focus_data: str = "data_instruction/minigpt_focus_short_zh.json"
+    focus_repeat: int = 120
+    focus_augment: bool = True
+    max_output_chars: int = 36
     prompt_style: str = "compact"
-    sample_instruction: str = "根据输入生成一段故事"
-    sample_input: str = "我来自海外"
-    generate_tokens: int = 120
-    temperature: float = 0.6
-    top_k: int = 10
+    sample_instruction: str = "请用一句话解释什么是人工智能"
+    sample_input: str = ""
+    generate_tokens: int = 60
+    temperature: float = 0.3
+    top_k: int = 5
     eos_token: str = "<EOS>"
     device: str = "auto"
 
@@ -266,33 +237,29 @@ def parse_args() -> FinetuneConfig:
 
     parser = argparse.ArgumentParser(description="第 4 步小参数量 GPT 类模型指令微调程序")
     parser.add_argument("--data-dir", default="data_instruction/alpaca_gpt4_data_zh.json", help="存放 json 或 jsonl 指令微调数据的目录或文件")
-    parser.add_argument("--pretrained", default="outputs_true_pretrain_tinystories/mini_gpt_pretrained.pt", help="第 3 步预训练 checkpoint 路径")
-    parser.add_argument("--output-dir", default="outputs_true_pretrain_alpaca_instruction_finetune", help="保存微调产物的目录")
-    parser.add_argument("--data-filter", default="story_generation", choices=DATA_FILTER_CHOICES, help="指令样本筛选策略，none 表示全量，story_generation 表示故事生成样本，story_input 表示带输入的故事生成样本")
-    parser.add_argument("--input-repeat", type=int, default=2, help="带输入样本额外重复混入训练集的次数，验证集不重复")
+    parser.add_argument("--pretrained", default="outputs_pretrain/mini_gpt_pretrained.pt", help="第 3 步预训练 checkpoint 路径")
+    parser.add_argument("--output-dir", default="outputs_instruction_finetune", help="保存微调产物的目录")
     parser.add_argument("--batch-size", type=int, default=4, help="每个 batch 的样本数量")
-    parser.add_argument("--max-steps", type=int, default=600, help="最大微调步数")
-    parser.add_argument("--eval-interval", type=int, default=25, help="评估间隔步数")
+    parser.add_argument("--max-steps", type=int, default=5000, help="最大微调步数")
+    parser.add_argument("--eval-interval", type=int, default=50, help="评估间隔步数")
     parser.add_argument("--eval-batches", type=int, default=10, help="每次评估最多使用的 batch 数量")
-    parser.add_argument("--early-stopping-patience", type=int, default=4, help="验证损失连续无改善多少次后提前停止，0 表示关闭")
-    parser.add_argument("--early-stopping-min-delta", type=float, default=0.01, help="验证损失下降超过该阈值才视为有效改善")
-    parser.add_argument("--learning-rate", type=float, default=5e-5, help="学习率")
+    parser.add_argument("--learning-rate", type=float, default=1e-4, help="学习率")
     parser.add_argument("--weight-decay", type=float, default=0.05, help="权重衰减")
     parser.add_argument("--grad-clip", type=float, default=1.0, help="梯度裁剪阈值")
     parser.add_argument("--train-split", type=float, default=0.9, help="训练集样本比例")
     parser.add_argument("--seed", type=int, default=42, help="随机种子")
-    parser.add_argument("--focus-data", default="", help="重复混入训练集的高质量短回答数据文件或目录")
-    parser.add_argument("--focus-repeat", type=int, default=0, help="高质量短回答数据重复混入次数，传入 0 表示不混入")
-    parser.set_defaults(focus_augment=False)
+    parser.add_argument("--focus-data", default="data_instruction/minigpt_focus_short_zh.json", help="重复混入训练集的高质量短回答数据文件或目录")
+    parser.add_argument("--focus-repeat", type=int, default=120, help="高质量短回答数据重复混入次数，传入 0 表示不混入")
+    parser.set_defaults(focus_augment=True)
     parser.add_argument("--focus-augment", dest="focus_augment", action="store_true", help="开启重点短回答样本等价问法扩增")
     parser.add_argument("--no-focus-augment", dest="focus_augment", action="store_false", help="关闭重点短回答样本等价问法扩增")
-    parser.add_argument("--max-output-chars", type=int, default=0, help="每条回答最多保留的字符数，传入 0 表示不截断")
+    parser.add_argument("--max-output-chars", type=int, default=36, help="每条回答最多保留的字符数，传入 0 表示不截断")
     parser.add_argument("--prompt-style", default="compact", choices=["compact", "alpaca"], help="提示词模板风格")
-    parser.add_argument("--sample-instruction", default="根据输入生成一段故事", help="训练前后用于生成对比的指令")
-    parser.add_argument("--sample-input", default="我来自海外", help="训练前后用于生成对比的输入内容")
-    parser.add_argument("--generate-tokens", type=int, default=120, help="生成的新 token 数量")
-    parser.add_argument("--temperature", type=float, default=0.6, help="生成采样温度，传入 0 表示贪心解码")
-    parser.add_argument("--top-k", type=int, default=10, help="生成时保留的候选 token 数量，传入 0 表示不限制")
+    parser.add_argument("--sample-instruction", default="请用一句话解释什么是人工智能", help="训练前后用于生成对比的指令")
+    parser.add_argument("--sample-input", default="", help="训练前后用于生成对比的输入内容")
+    parser.add_argument("--generate-tokens", type=int, default=60, help="生成的新 token 数量")
+    parser.add_argument("--temperature", type=float, default=0.3, help="生成采样温度，传入 0 表示贪心解码")
+    parser.add_argument("--top-k", type=int, default=5, help="生成时保留的候选 token 数量，传入 0 表示不限制")
     parser.add_argument("--eos-token", default="<EOS>", help="指令回答结束特殊 token")
     parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"], help="运行设备")
     args = parser.parse_args()
@@ -317,16 +284,10 @@ def validate_config(config: FinetuneConfig) -> None:
         raise ValueError("eval_interval 必须大于 0")
     if config.eval_batches <= 0:
         raise ValueError("eval_batches 必须大于 0")
-    if config.early_stopping_patience < 0:
-        raise ValueError("early_stopping_patience 不能小于 0")
-    if config.early_stopping_min_delta < 0:
-        raise ValueError("early_stopping_min_delta 不能小于 0")
     if config.learning_rate <= 0:
         raise ValueError("learning_rate 必须大于 0")
     if not 0 < config.train_split < 1:
         raise ValueError("train_split 必须位于 0 和 1 之间")
-    if config.input_repeat < 0:
-        raise ValueError("input_repeat 不能小于 0")
     if config.focus_repeat < 0:
         raise ValueError("focus_repeat 不能小于 0")
     if config.max_output_chars < 0:
@@ -343,8 +304,6 @@ def validate_config(config: FinetuneConfig) -> None:
         raise ValueError("grad_clip 必须大于 0")
     if not config.eos_token:
         raise ValueError("eos_token 不能为空")
-    if config.data_filter not in DATA_FILTER_CHOICES:
-        raise ValueError(f"data_filter 必须是 {DATA_FILTER_CHOICES} 之一")
 
 
 def set_seed(seed: int) -> None:
@@ -572,66 +531,6 @@ def load_instruction_examples(
         for item in DEFAULT_INSTRUCTION_EXAMPLES
     ]
     return default_examples, []
-
-
-def is_story_generation_example(example: InstructionExample) -> bool:
-    """判断样本是否属于故事生成任务
-
-    参数含义:
-        example: 待判断的一条指令微调样本
-
-    返回值含义:
-        返回 True 表示该样本要求直接写作、续写或补全故事
-    """
-
-    instruction = normalize_text(example.instruction)
-    if "故事" not in instruction:
-        return False
-    if any(keyword in instruction for keyword in STORY_GENERATION_EXCLUDE_KEYWORDS):
-        return False
-    return any(keyword in instruction for keyword in STORY_GENERATION_INCLUDE_KEYWORDS)
-
-
-def is_story_input_example(example: InstructionExample) -> bool:
-    """判断样本是否属于带输入的故事生成任务
-
-    参数含义:
-        example: 待判断的一条指令微调样本
-
-    返回值含义:
-        返回 True 表示该样本带有输入内容，且指令要求生成、创作或续写故事
-    """
-
-    input_text = normalize_text(example.input)
-    return bool(input_text) and is_story_generation_example(example)
-
-
-def filter_instruction_examples(
-    examples: list[InstructionExample],
-    data_filter: str,
-) -> list[InstructionExample]:
-    """按配置筛选指令微调样本
-
-    参数含义:
-        examples: 原始指令样本列表
-        data_filter: 样本筛选策略，none 表示不筛选，story_generation 表示故事生成样本，story_input 表示带输入的故事生成样本
-
-    返回值含义:
-        返回筛选后的指令样本列表，筛选结果为空时抛出 ValueError
-    """
-
-    if data_filter == "none":
-        return examples
-    if data_filter == "story_generation":
-        filtered_examples = [example for example in examples if is_story_generation_example(example)]
-    elif data_filter == "story_input":
-        filtered_examples = [example for example in examples if is_story_input_example(example)]
-    else:
-        raise ValueError(f"不支持的数据筛选策略: {data_filter}")
-
-    if not filtered_examples:
-        raise ValueError(f"data_filter={data_filter} 后没有可用指令样本")
-    return filtered_examples
 
 
 def load_focus_instruction_examples(config: FinetuneConfig) -> tuple[list[InstructionExample], list[Path]]:
@@ -1033,7 +932,7 @@ def build_dataloaders(
     model_config: GPTConfig,
     config: FinetuneConfig,
     eos_id: int,
-) -> tuple[DataLoader, DataLoader, list[InstructionExample], list[InstructionExample], int, int, int, int]:
+) -> tuple[DataLoader, DataLoader, list[InstructionExample], list[InstructionExample], int, int, int]:
     """构建训练集和验证集 DataLoader
 
     参数含义:
@@ -1045,7 +944,7 @@ def build_dataloaders(
         eos_id: 回答结束特殊 token 的编号
 
     返回值含义:
-        返回训练 DataLoader、验证 DataLoader、训练样本列表、验证样本列表、被过滤样本数、重点训练样本数、重点验证样本数和原始带输入训练样本数
+        返回训练 DataLoader、验证 DataLoader、训练样本列表、验证样本列表、被过滤样本数、重点训练样本数和重点验证样本数
     """
 
     train_examples, valid_examples = split_examples(examples, config.train_split, config.seed)
@@ -1058,10 +957,8 @@ def build_dataloaders(
             config.seed + 1,
         )
 
-    input_train_examples = [example for example in train_examples if normalize_text(example.input)]
-    repeated_input_train = input_train_examples * config.input_repeat
     repeated_focus_train = focus_train_examples * config.focus_repeat
-    mixed_train_examples = train_examples + repeated_input_train + repeated_focus_train
+    mixed_train_examples = train_examples + repeated_focus_train
     mixed_valid_examples = valid_examples + focus_valid_examples
 
     train_dataset = InstructionDataset(
@@ -1091,7 +988,6 @@ def build_dataloaders(
         skipped_examples,
         len(focus_train_examples),
         len(focus_valid_examples),
-        len(input_train_examples),
     )
 
 
@@ -1151,7 +1047,7 @@ def train_model(
         device: 执行训练的设备
 
     返回值含义:
-        返回训练日志列表，每个元素记录 step、train_loss、valid_loss 和早停状态
+        返回训练日志列表，每个元素记录 step、train_loss 和 valid_loss
     """
 
     optimizer = torch.optim.AdamW(
@@ -1162,10 +1058,6 @@ def train_model(
     model.train()
     loss_log: list[dict[str, float]] = []
     train_iter = iter(train_loader)
-    best_valid_loss = float("inf")
-    best_step = 0
-    bad_eval_count = 0
-    best_state_dict: dict[str, torch.Tensor] | None = None
 
     for step in range(1, config.max_steps + 1):
         try:
@@ -1192,42 +1084,14 @@ def train_model(
         if should_eval:
             train_loss = estimate_loss(model, train_loader, device, config.eval_batches)
             valid_loss = estimate_loss(model, valid_loader, device, config.eval_batches)
-            is_best = best_state_dict is None or valid_loss < best_valid_loss - config.early_stopping_min_delta
-            if is_best:
-                best_valid_loss = valid_loss
-                best_step = step
-                bad_eval_count = 0
-                best_state_dict = {
-                    key: value.detach().cpu().clone()
-                    for key, value in model.state_dict().items()
-                }
-            else:
-                bad_eval_count += 1
-
-            early_stopped = config.early_stopping_patience > 0 and bad_eval_count >= config.early_stopping_patience
             loss_log.append(
                 {
                     "step": float(step),
                     "train_loss": train_loss,
                     "valid_loss": valid_loss,
-                    "best_valid_loss": best_valid_loss,
-                    "bad_eval_count": float(bad_eval_count),
-                    "is_best": float(is_best),
-                    "early_stopped": float(early_stopped),
                 }
             )
-            print(
-                f"step {step:4d} | train_loss {train_loss:.4f} | "
-                f"valid_loss {valid_loss:.4f} | best_valid_loss {best_valid_loss:.4f}"
-            )
-            if early_stopped:
-                print(f"验证损失连续 {bad_eval_count} 次没有有效改善，提前停止训练")
-                break
-
-    if best_state_dict is not None:
-        model.load_state_dict(best_state_dict)
-        model.to(device)
-        print(f"已恢复验证集最佳权重: step {best_step}, valid_loss {best_valid_loss:.4f}")
+            print(f"step {step:4d} | train_loss {train_loss:.4f} | valid_loss {valid_loss:.4f}")
 
     return loss_log
 
@@ -1382,19 +1246,7 @@ def save_loss_log(loss_log: list[dict[str, float]], file_path: Path) -> None:
     """
 
     with open(file_path, "w", encoding="utf-8", newline="") as file:
-        writer = csv.DictWriter(
-            file,
-            fieldnames=[
-                "step",
-                "train_loss",
-                "valid_loss",
-                "best_valid_loss",
-                "bad_eval_count",
-                "is_best",
-                "early_stopped",
-            ],
-            lineterminator="\r\n",
-        )
+        writer = csv.DictWriter(file, fieldnames=["step", "train_loss", "valid_loss"], lineterminator="\r\n")
         writer.writeheader()
         writer.writerows(loss_log)
 
@@ -1492,8 +1344,7 @@ def main() -> None:
     device = select_device(config.device)
 
     checkpoint = load_pretrained_checkpoint(Path(config.pretrained))
-    raw_examples, data_files = load_instruction_examples(Path(config.data_dir))
-    examples = filter_instruction_examples(raw_examples, config.data_filter)
+    examples, data_files = load_instruction_examples(Path(config.data_dir))
     raw_focus_examples, focus_files = load_focus_instruction_examples(config)
     focus_examples = (
         augment_focus_instruction_examples(raw_focus_examples)
@@ -1517,7 +1368,6 @@ def main() -> None:
         skipped_examples,
         focus_train_count,
         focus_valid_count,
-        input_train_count,
     ) = build_dataloaders(
         examples,
         focus_examples,
@@ -1532,18 +1382,14 @@ def main() -> None:
     print(config)
     print(f"运行设备: {device}")
     print(f"读取通用指令文件数: {len(data_files)}")
-    print(f"原始通用指令样本数: {len(raw_examples):,}")
-    print(f"指令样本筛选策略: {config.data_filter}")
-    print(f"筛选后通用指令样本数: {len(examples):,}")
     print(f"读取重点短回答文件数: {len(focus_files)}")
+    print(f"通用指令样本数: {len(examples):,}")
     print(f"重点短回答原始样本数: {len(raw_focus_examples):,}")
     print(f"重点短回答增强后样本数: {len(focus_examples):,}")
     print(f"重点训练样本数: {focus_train_count:,}")
     print(f"重点验证样本数: {focus_valid_count:,}")
     print(f"重点训练样本重复次数: {config.focus_repeat:,}")
     print(f"重点短回答问法扩增: {config.focus_augment}")
-    print(f"原始带输入训练样本数: {input_train_count:,}")
-    print(f"带输入训练样本额外重复次数: {config.input_repeat:,}")
     print(f"训练混合原始样本数: {len(train_examples):,}")
     print(f"验证混合原始样本数: {len(valid_examples):,}")
     print(f"训练可用样本数: {len(train_loader.dataset):,}")

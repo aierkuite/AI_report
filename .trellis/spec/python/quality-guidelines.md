@@ -94,6 +94,8 @@ When improving `mini.py` instruction fine-tuning quality, check the full trainin
 - Supervised samples should append an explicit answer-end token and mask only the prompt region with `-100`
 - Generation should stop on the answer-end token and strip repeated prompt markers from the decoded answer
 - For tiny character-level models, prefer compact Chinese prompt templates and short target answers over long Alpaca-style prompts when the task is short-answer coursework
+- For broad Alpaca-style instruction tuning with input-conditioned generation, keep focused short-answer mixing disabled by default and avoid global output truncation; otherwise the model can learn generic short replies or refusal templates instead of using the `input` field
+- For Alpaca story generation on MiniGPT, do not make a tiny input-only subset the default training set; prefer a broader same-task `story_generation` filter and, if needed, repeat input-conditioned training samples while keeping validation unrepeated
 - If a broad instruction dataset underfits target questions, add a small focused UTF-8 JSON / JSONL dataset under `data_instruction/`, expand equivalent phrasings for the same concept, and mix it into training with an explicit repeat count, while keeping validation mixed only once
 - When focused data starts to behave like memorized answers, lower the repeat count before adding more training steps
 - Decode with conservative defaults for coursework comparisons, then use greedy decoding such as `--temperature 0 --top-k 0` when checking whether training learned a stable answer
