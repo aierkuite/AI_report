@@ -100,6 +100,64 @@ When improving `mini.py` instruction fine-tuning quality, check the full trainin
 
 ---
 
+## MiniGPT True Pretraining Checks
+
+When improving `mini_gpt_true_pretrain.py`, treat the data-source defaults and tokenizer settings as part of the CLI contract:
+
+### 1. Scope / Trigger
+
+- Trigger: changing pretraining loss behavior, data source defaults, tokenizer vocabulary construction, or saved training metadata
+
+### 2. Signatures
+
+- CLI entrypoint: `python mini_gpt_true_pretrain.py [options]`
+- Data-source flags: `--source {ratio,wiki,tinystories,json,parquet,text,all}` and `--mix-ratio <source=ratio,...>`
+- Tokenizer flag: `--min-char-frequency <int>`
+
+### 3. Contracts
+
+- Default pretraining source should remain TinyStories-Zh unless a task explicitly asks to use Wiki or mixed corpora
+- Wiki may be used through `--source wiki` or `--source ratio --mix-ratio tinystories=...,wiki=...`
+- `--min-char-frequency` controls the minimum corpus frequency required for a character to enter the vocabulary; lower-frequency characters map to `<UNK>`
+- Saved config should include tokenizer statistics when tokenizer construction changes
+
+### 4. Validation & Error Matrix
+
+- `min_char_frequency <= 0` -> `ValueError`
+- Missing selected data source files -> `FileNotFoundError`
+- Ratio source with no available selected files -> `FileNotFoundError`
+- Unsupported ratio key -> `ValueError`
+
+### 5. Good/Base/Bad Cases
+
+- Good: TinyStories-Zh from-scratch training with low-frequency characters mapped to `<UNK>`
+- Base: explicit ratio mix for experiments that intentionally compare Wiki with TinyStories-Zh
+- Bad: silently adding Wiki to the default run when optimizing TinyStories-Zh pretraining loss
+
+### 6. Tests Required
+
+- Run `python -m py_compile mini_gpt_true_pretrain.py`
+- Run `python mini_gpt_true_pretrain.py --help` and verify the data-source and tokenizer flags are visible
+- Run a small `--dry-run` when the current environment has the required ML dependencies
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```bash
+python mini_gpt_true_pretrain.py
+# 默认隐式混合 TinyStories-Zh 和 Wiki，导致训练目标和验证分布混杂
+```
+
+#### Correct
+
+```bash
+python mini_gpt_true_pretrain.py
+# 默认 TinyStories-Zh，从头预训练时保留一致的故事语料分布
+```
+
+---
+
 ## Qwen Classification Fine-Tuning Checks
 
 When adding or changing Qwen classification fine-tuning scripts, check that the classifier is a true sequence-classification workflow rather than a generation prompt workaround:
