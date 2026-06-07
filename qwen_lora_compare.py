@@ -97,7 +97,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model-dir", default=DEFAULT_MODEL_DIR, help="本地 Qwen2.5 base 模型目录")
     parser.add_argument("--adapter-dir", default=DEFAULT_ADAPTER_DIR, help="LoRA 微调适配器目录")
     parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"], help="运行设备")
-    parser.add_argument("--max-new-tokens", type=int, default=128, help="最多生成的新 token 数量")
+    parser.add_argument("--max-new-tokens", type=int, default=60, help="最多生成的新 token 数量")
     parser.add_argument("--temperature", type=float, default=0.8, help="采样温度，仅在启用采样时生效")
     parser.add_argument("--top-p", type=float, default=0.9, help="核采样概率阈值，仅在启用采样时生效")
     parser.add_argument("--do-sample", action="store_true", help="启用随机采样，默认使用确定性生成")

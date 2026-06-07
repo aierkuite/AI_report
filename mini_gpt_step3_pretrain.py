@@ -252,7 +252,7 @@ def parse_args() -> PretrainConfig:
     parser.add_argument("--grad-clip", type=float, default=1.0, help="梯度裁剪阈值")
     parser.add_argument("--train-split", type=float, default=0.9, help="训练集 token 比例")
     parser.add_argument("--seed", type=int, default=42, help="随机种子")
-    parser.add_argument("--prompt", default="人工智能", help="训练前后用于生成对比的提示文本")
+    parser.add_argument("--prompt", default="小说不是", help="训练前后用于生成对比的提示文本")
     parser.add_argument("--generate-tokens", type=int, default=120, help="生成的新 token 数量")
     parser.add_argument("--temperature", type=float, default=0.8, help="生成采样温度")
     parser.add_argument("--top-k", type=int, default=20, help="生成时保留的候选 token 数量")

@@ -310,7 +310,7 @@ def parse_args() -> FinetuneConfig:
     parser.add_argument("--eval-interval", type=int, default=50, help="每隔多少次参数更新评估一次")
     parser.add_argument("--eval-batches", type=int, default=50, help="每次评估最多使用的 batch 数量")
     parser.add_argument("--early-stopping-patience", type=int, default=0, help="验证损失连续未改进多少次后提前终止，0 或负数表示关闭")
-    parser.add_argument("--early-stopping-min-delta", type=float, default=0.0, help="验证损失下降超过该阈值才视为有效改进")
+    parser.add_argument("--early-stopping-min-delta", type=float, default=0.01, help="验证损失下降超过该阈值才视为有效改进")
     parser.add_argument("--learning-rate", type=float, default=2e-4, help="学习率")
     parser.add_argument("--warmup-steps", type=int, default=100, help="学习率预热的 optimizer step 数量")
     parser.add_argument("--lr-scheduler-type", default="linear", choices=["none", "linear", "cosine"], help="学习率调度策略")

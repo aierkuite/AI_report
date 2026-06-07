@@ -3,10 +3,23 @@ __pycache__/
 
 models/
 outputs_instruction_finetune/
+outputs_instruction_finetune_v2/
 outputs_pretrain/
+outputs_true_pretrain/
+outputs_true_pretrain_alpaca_instruction_finetune/
+outputs_true_pretrain_tinystories/
 outputs_qwen_lora_finetune/
 outputs_qwen_lora_quick_test/
 outputs_qwen_classification_finetune/
 
+data_pretrain/true_pretrain/
+.tmp_pydeps/
+.claude/settings.local.json
+.codex/config.toml
+
 *.pyc
 *.log
+*.tmp
+~$*
+~WRL*.tmp
+从零构建大模型*.pdf

@@ -87,4 +87,4 @@ max_journal_lines: 2000
 # sub-agents).
 #
 codex:
-  dispatch_mode: sub-agent  # or "inline" to make the main Codex session edit directly
+  dispatch_mode: inline  # or "inline" to make the main Codex session edit directly

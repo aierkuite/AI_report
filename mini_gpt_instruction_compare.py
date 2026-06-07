@@ -77,7 +77,7 @@ def parse_args() -> InferenceConfig:
     parser.add_argument("--pretrained", default=DEFAULT_PRETRAINED_CHECKPOINT, help="第 3 步预训练 checkpoint 路径")
     parser.add_argument("--finetuned", default=DEFAULT_FINETUNED_CHECKPOINT, help="第 4 步指令微调 checkpoint 路径")
     parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"], help="运行设备")
-    parser.add_argument("--max-new-tokens", type=int, default=60, help="每个模型最多生成的新 token 数量")
+    parser.add_argument("--max-new-tokens", type=int, default=1000, help="每个模型最多生成的新 token 数量")
     parser.add_argument("--temperature", type=float, default=0.0, help="生成采样温度，传入 0 表示贪心解码")
     parser.add_argument("--top-k", type=int, default=0, help="生成时保留的候选 token 数量，传入 0 表示不限制")
     parser.add_argument("--prompt-style", default="auto", choices=["auto", "compact", "alpaca"], help="提示词模板风格")
